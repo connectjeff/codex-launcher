@@ -112,11 +112,6 @@ start = time.time(); r = requests.post(url, json=payload); data = r.json(); prin
 - Disk space warnings before launching
 - Better error handling throughout
 
-## Known Issues
-
-- Model performance below expected for M1 Ultra hardware
-  - Issue may be related to quantization level or GPU offload settings
-
 ## TODO
 
 See [`TODO.md`](./TODO.md) for planned features and improvements.
