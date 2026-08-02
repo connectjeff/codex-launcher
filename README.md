@@ -73,16 +73,16 @@ This configuration has been tested on the following system:
 **Model**: Qwen3-Coder-Next
 **Quantization**: MLX format on macOS (quantization controlled by system)
 
-### Performance Benchmarks (v1.1.0)
+### Performance Benchmarks (Observed on 2026-08-02)
 
-| Metric | Result | Expected (M1 Ultra) |
-|--------|--------|---------------------|
-| Avg Response Time | ~8.45s | 3-8s |
-| Tokens/Second | 17.8 (15.9-21.0) | 150-250 |
+| Metric | Observed Range | Average |
+|--------|----------------|---------|
+| Avg Response Time | 3.10s-4.22s | 3.46s |
+| Tokens/Second | 34.12-44.84 | 43.41 |
 
 ### Notes
 
-The current performance is below the expected benchmark for an M1 Ultra with this model size. Possible factors:
+These results were measured locally against LM Studio on this Mac Studio M1 Ultra using `qwen/qwen3-coder-next` and a 100-word essay prompt. Possible factors that can shift the numbers:
 
 - **Quantization**: MLX format on macOS (quantization controlled by system)
 - **GPU offload**: Enabled in LM Studio
@@ -96,7 +96,7 @@ python3 -c "
 import requests, time
 url = 'http://127.0.0.1:1234/v1/chat/completions'
 payload = {'model': 'qwen/qwen3-coder-next', 'messages': [{'role':'user','content':'Write a 100-word essay about machine learning'}], 'max_tokens': 256}
-start = time.time(); r = requests.post(url, json=payload); print(f'{(time.time()-start):.2f}s')
+start = time.time(); r = requests.post(url, json=payload); data = r.json(); print(f\"{(time.time()-start):.2f}s, {data['usage']['completion_tokens']/(time.time()-start):.2f} tokens/s\")
 "
 ```
 
