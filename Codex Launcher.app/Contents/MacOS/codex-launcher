@@ -1,0 +1,344 @@
+#!/bin/zsh
+set -euo pipefail
+
+CODEX_BIN="/Applications/ChatGPT.app/Contents/Resources/codex"
+DEFAULT_CODEX_HOME="${HOME}/.codex"
+LOCAL_CODEX_HOME="${HOME}/codex-config/codex-home-lmstudio"
+START_DIR="${HOME}/codex-config"
+LMSTUDIO_URL="http://127.0.0.1:1234/v1/models"
+DEFAULT_MODEL="qwen/qwen3-coder-next"
+LOG_FILE="${HOME}/codex-config/codex-launcher.log"
+VERSION="1.0.0"
+
+# Configuration file for storing preferences
+PREF_FILE="${LOCAL_CODEX_HOME}/launcher-preferences.toml"
+
+exec >>"${LOG_FILE}" 2>&1
+echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] launcher started (version ${VERSION})"
+
+# Configure logging level
+LOG_LEVEL="${LOG_LEVEL:-info}"
+
+log() {
+    local level="$1"
+    shift
+    local message="$*"
+    case "${LOG_LEVEL}" in
+        debug) echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${level}] ${message}" ;;
+        info|warn|error) [[ "${level}" != "debug" ]] && echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] [${level}] ${message}" ;;
+    esac
+}
+
+# Retry logic for LM Studio connection
+wait_for_lmstudio() {
+    local max_retries=5
+    local retry_delay=2
+
+    log info "Waiting for LM Studio (max ${max_retries} retries)..."
+
+    for ((i=1; i<=max_retries; i++)); do
+        if /usr/bin/curl -fsS --max-time 3 "${LMSTUDIO_URL}" >/dev/null 2>&1; then
+            log info "LM Studio is reachable after ${i} attempt(s)"
+            return 0
+        fi
+
+        if (( i < max_retries )); then
+            log warn "LM Studio not reachable (attempt ${i}/${max_retries}), retrying in ${retry_delay}s..."
+            sleep "${retry_delay}"
+        fi
+    done
+
+    log error "LM Studio is not reachable after ${max_retries} attempts"
+    return 1
+}
+
+# Function to display error alerts
+display_alert() {
+    local title="$1"
+    local message="$2"
+    local alert_type="${3:-warning}"
+
+    local alert_cmd="display alert \"${title}\" message \"${message}\""
+    case "${alert_type}" in
+        error) alert_cmd="${alert_cmd} as error" ;;
+        warning) alert_cmd="${alert_cmd} as warning" ;;
+        info) alert_cmd="${alert_cmd} as informational" ;;
+    esac
+
+    /usr/bin/osascript -e "${alert_cmd}"
+}
+
+# Check if ChatGPT/Codex is running
+is_codex_running() {
+    /usr/bin/osascript -e "application id \"com.openai.codex\" is running" 2>/dev/null | grep -q "true"
+}
+
+# Get list of models from LM Studio
+get_models() {
+    local max_retries=3
+
+    for ((i=1; i<=max_retries; i++)); do
+        local model_json
+        if model_json=$(/usr/bin/curl -fsS --max-time 10 "${LMSTUDIO_URL}" 2>/dev/null); then
+            echo "${model_json}"
+            return 0
+        fi
+
+        if (( i < max_retries )); then
+            sleep 1
+        fi
+    done
+
+    return 1
+}
+
+# Parse models and filter to chat models only
+parse_models() {
+    local model_json="$1"
+
+    python3 << PYSCRIPT
+import json, subprocess, sys
+data = json.loads("""${model_json}""".strip())
+models = data.get('data', [])
+
+# Filter to chat models only (exclude embedding and rerank)
+chat_models = [m['id'] for m in models if not any(x in str(m).lower() for x in ['embedding', 'rerank'])]
+chat_models.sort()
+
+# Load last-used models from preferences
+last_used = []
+try:
+    pref_file = "${PREF_FILE}"
+    with open(pref_file, 'r') as f:
+        for line in f:
+            if line.startswith('last_used_model = '):
+                last_used.append(line.split('"')[1])
+except FileNotFoundError:
+    pass
+
+# Put last-used models at the top
+default_model = """${DEFAULT_MODEL}"""
+if default_model in chat_models:
+    options = [default_model] + [m for m in chat_models if m != default_model]
+else:
+    options = chat_models
+
+result = subprocess.run(['osascript', '-e', """
+set options to """ + json.dumps(options) + """
+set picked to choose from list options with title "Codex Launcher" with prompt "Choose model to use:" default items {item 1 of options} OK button name "Launch" cancel button name "Cancel"
+if picked is false then
+    return "__cancel__"
+end if
+return item 1 of picked
+"""], capture_output=True, text=True)
+print(result.stdout.strip())
+PYSCRIPT
+}
+
+# Save preference
+save_preference() {
+    local key="$1"
+    local value="$2"
+
+    mkdir -p "$(dirname "${PREF_FILE}")"
+
+    if [[ -f "${PREF_FILE}" ]]; then
+        # Remove existing key if present
+        grep -v "^${key} = " "${PREF_FILE}" > "${PREF_FILE}.tmp" || true
+        mv "${PREF_FILE}.tmp" "${PREF_FILE}"
+    fi
+
+    echo "${key} = \"${value}\"" >> "${PREF_FILE}"
+}
+
+# Update model in config.toml
+update_config_model() {
+    local config_file="$1"
+    local selected_model="$2"
+
+    if [[ -f "${config_file}" ]]; then
+        /usr/bin/python3 - "${config_file}" "${selected_model}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+model = sys.argv[2]
+lines = path.read_text().splitlines()
+for index, line in enumerate(lines):
+    if line.startswith("model = "):
+        lines[index] = f'model = "{model}"'
+        break
+else:
+    lines.insert(0, f'model = "{model}"')
+path.write_text("\n".join(lines) + "\n")
+PY
+    fi
+}
+
+# Update state database with selected model
+update_state_model() {
+    local state_db="$1"
+    local selected_model="$2"
+
+    if [[ -f "${state_db}" ]]; then
+        local backup_db="${state_db}.bak-before-coder-model"
+        if [[ ! -f "${backup_db}" ]]; then
+            /bin/cp "${state_db}" "${backup_db}"
+        fi
+        /usr/bin/sqlite3 "${state_db}" \
+            "UPDATE threads SET model_provider = 'lmstudio-local', model = '${selected_model}', reasoning_effort = 'none' WHERE model_provider = 'lmstudio-local' OR model LIKE 'qwen/%' OR model = 'codex-auto-review';"
+    fi
+}
+
+# Get available disk space in MB
+get_disk_space() {
+    df -m "${HOME}" | awk 'NR==2 {print $4}'
+}
+
+# Main launcher logic
+choice="$(
+  /usr/bin/osascript <<'APPLESCRIPT'
+set options to {"Default Codex config", "Local LM Studio only"}
+set picked to choose from list options with title "Codex Launcher" with prompt "Choose the Codex configuration for this session:" default items {"Default Codex config"} OK button name "Launch" cancel button name "Cancel"
+if picked is false then
+  return "__cancel__"
+end if
+return item 1 of picked
+APPLESCRIPT
+)"
+
+if [[ "${choice}" == "__cancel__" ]]; then
+  echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] launch cancelled at config picker"
+  exit 0
+fi
+
+case "${choice}" in
+  "Default Codex config")
+    selected_codex_home="${DEFAULT_CODEX_HOME}"
+    ;;
+  "Local LM Studio only")
+    selected_codex_home="${LOCAL_CODEX_HOME}"
+
+    # Check disk space before proceeding
+    available_space=$(get_disk_space)
+    if [[ ${available_space} -lt 1024 ]]; then
+      display_alert "Codex Launcher" "Low disk space warning: ${available_space}MB available. Less than 1GB may cause issues." "warning"
+      log warn "Low disk space: ${available_space}MB available"
+    fi
+
+    # Wait for LM Studio with retry logic
+    if ! wait_for_lmstudio; then
+      display_alert "Codex Launcher" "LM Studio is not reachable at http://127.0.0.1:1234/v1/models. Start LM Studio, enable the local server, then launch again." "warning"
+      log error "LM Studio models endpoint not reachable after retries"
+      exit 1
+    fi
+
+    # Get models with retry logic
+    model_json=""
+    if ! model_json=$(get_models); then
+      display_alert "Codex Launcher" "Failed to fetch models from LM Studio after multiple attempts." "warning"
+      log error "Failed to fetch models after retries"
+      exit 1
+    fi
+
+    # Check if we got valid JSON
+    if ! printf '%s' "${model_json}" | /usr/bin/python3 -m json.tool >/dev/null 2>&1; then
+      display_alert "Codex Launcher" "Invalid response from LM Studio models endpoint." "warning"
+      log error "Invalid JSON from models endpoint"
+      exit 1
+    fi
+
+    # Parse and select model
+    selected_model=$(parse_models "${model_json}")
+
+    if [[ "${selected_model}" == "__cancel__" ]]; then
+      echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] launch cancelled at model picker"
+      exit 0
+    fi
+
+    if [[ -z "${selected_model}" ]]; then
+      display_alert "Codex Launcher" "No usable chat model was selected from LM Studio." "warning"
+      log error "No model selected from LM Studio model picker"
+      exit 0
+    fi
+
+    # Save last-used preference
+    save_preference "last_used_model" "${selected_model}"
+
+    # Update configuration
+    CONFIG_FILE="${LOCAL_CODEX_HOME}/config.toml"
+    update_config_model "${CONFIG_FILE}" "${selected_model}"
+
+    # Update state database
+    STATE_DB="${LOCAL_CODEX_HOME}/state_5.sqlite"
+    update_state_model "${STATE_DB}" "${selected_model}"
+
+    unset OPENAI_API_KEY CHATGPT_API_KEY CODEX_AUTH_TOKEN CODEX_API_KEY
+    log info "LM Studio mode validated with model ${selected_model}"
+    ;;
+  *)
+    display_alert "Codex Launcher" "Unknown configuration selected: ${choice}" "warning"
+    log error "unknown config choice: ${choice}"
+    exit 1
+    ;;
+esac
+
+# Check if Codex is already running
+if is_codex_running; then
+  relaunch_choice="$(
+    /usr/bin/osascript <<'APPLESCRIPT'
+set picked to button returned of (display dialog "ChatGPT/Codex is already running. To apply the selected configuration, ChatGPT/Codex must quit first." buttons {"Cancel", "Launch Anyway", "Quit and Relaunch"} default button "Quit and Relaunch" with title "Codex Launcher")
+return picked
+APPLESCRIPT
+)"
+
+  case "${relaunch_choice}" in
+    "Cancel")
+      echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] launch cancelled at relaunch prompt"
+      exit 0
+      ;;
+    "Quit and Relaunch")
+      echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] requested ChatGPT/Codex quit before relaunch"
+      /usr/bin/osascript -e 'tell application id "com.openai.codex" to quit' || {
+        display_alert "Codex Launcher" "Failed to quit ChatGPT/Codex. Please quit manually and try again." "error"
+        log error "Failed to quit Codex application"
+        exit 1
+      }
+      sleep 3
+      echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] continuing after quit wait"
+      ;;
+    "Launch Anyway")
+      echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] launching without quit"
+      ;;
+    *)
+      log error "unexpected relaunch choice: ${relaunch_choice}"
+      display_alert "Codex Launcher" "Unexpected error: invalid relaunch choice" "error"
+      exit 1
+      ;;
+  esac
+else
+  # Check if Codex app exists
+  if [[ ! -f "${CODEX_BIN}" ]]; then
+    display_alert "Codex Launcher" "ChatGPT/Codex app not found at ${CODEX_BIN}. Please install Codex." "error"
+    log error "Codex binary not found: ${CODEX_BIN}"
+    exit 1
+  fi
+fi
+
+# Launch Codex
+cd "${START_DIR}"
+export CODEX_HOME="${selected_codex_home}"
+
+case "${choice}" in
+  "Local LM Studio only")
+    log info "launching Codex GUI with CODEX_HOME=${CODEX_HOME}, provider=lmstudio-local, model=${selected_model}"
+    exec "${CODEX_BIN}" app \
+      -c 'model_provider="lmstudio-local"' \
+      -c "model=\"${selected_model}\"" \
+      "${START_DIR}"
+    ;;
+  *)
+    log info "launching Codex GUI with CODEX_HOME=${CODEX_HOME}"
+    exec "${CODEX_BIN}" app "${START_DIR}"
+    ;;
+esac

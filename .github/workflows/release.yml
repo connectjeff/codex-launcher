@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    env:
+      RELEASE_REPO: connectjeff/codex-launcher
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create release directory
+        run: mkdir -p dist-release
+
+      - name: Build macOS app bundle
+        run: |
+          # Copy the launcher app to release directory
+          cp -r "Codex Launcher.app" dist-release/
+
+      - name: Create ZIP archive
+        run: |
+          cd dist-release
+          # Remove backup files
+          rm -f "Codex Launcher.app/Contents/MacOS/codex-launcher.bak"
+          
+          # Get version from tag
+          VERSION=${GITHUB_REF#refs/tags/}
+          ZIP_NAME="Codex-Launcher-macos-${VERSION}.zip"
+          
+          # Create release notes
+          cat > README-Release.md << 'EOF'
+# Codex Launcher Release
+
+## Installation
+
+1. Copy \`Codex Launcher.app\` to your Applications folder
+2. Drag to Dock for easy access
+
+## Features
+
+- Quick-launch Codex with different configurations
+- LM Studio integration support
+- Automatic model configuration
+EOF
+
+          # Create the ZIP archive
+          zip -r "${ZIP_NAME}" "Codex Launcher.app" README-Release.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          gh release create "${VERSION}" \
+            --repo "${RELEASE_REPO}" \
+            --title "Codex Launcher ${VERSION}" \
+            --notes-file dist-release/README-Release.md \
+            dist-release/*.zip
+
+      - name: Cleanup
+        run: |
+          rm -rf dist-release
