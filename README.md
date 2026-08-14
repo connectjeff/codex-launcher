@@ -1,6 +1,29 @@
 # Codex Launcher
 
-This folder contains a Dockable macOS launcher for Codex:
+This repository contains native launchers for Codex on macOS and Windows 11.
+
+| Version | Entry point | Desktop integration | Profile manager |
+|---|---|---|---|
+| macOS | `Codex Launcher.app` | Dock/Finder application | `scripts/config-manager.sh` |
+| Windows 11 | `windows/codex-launcher.cmd` | Start menu/taskbar shortcut | `scripts/config-manager.cmd` |
+
+## Windows 11
+
+Run `windows\codex-launcher.cmd` or right-click `windows\Codex-Launcher.ps1` and choose **Run with PowerShell**. The launcher offers the normal Codex profile and an isolated LM Studio profile under `%USERPROFILE%\codex-config\codex-home-lmstudio`.
+
+To install an always-current Start menu shortcut backed by a symbolic link to this repository, run `windows\Install-CodexLauncher.ps1 -PinToTaskbar`. Windows 11 may require you to right-click the resulting Start menu entry and select **Pin to taskbar** if its protected taskbar API declines automatic pinning.
+
+The Windows icon is generated from the macOS iconset by `windows\Build-WindowsIcon.ps1`, so both launchers use the same artwork.
+
+The default LM Studio endpoint is `http://127.0.0.1:1234/v1`. This works with LM Studio running on Windows and with remote models exposed locally through LM Link. For a direct connection to another computer, override it without editing the script by setting `LMSTUDIO_BASE_URL`, or pass `-Endpoint` to the PowerShell entry point. The remote LM Studio server must listen on the LAN and permit inbound TCP port 1234.
+
+The Windows launcher queries `/v1/models`, excludes embedding and reranking models, prompts for a model, verifies a chat completion, writes the isolated Codex `config.toml`, removes common cloud API-token variables for the child process, and launches Codex. It does not alter the normal `%USERPROFILE%\.codex` profile.
+
+Windows configuration management is available through `scripts\config-manager.cmd` with `list`, `create`, `switch`, `export`, `import`, `show`, and `edit` commands.
+
+## macOS
+
+The existing macOS launcher remains unchanged:
 
 - `Codex Launcher.app` prompts for a runtime configuration.
 - `Codex Launcher.app/Contents/Resources/CodexLauncher.icns` provides the Dock/Finder icon.
