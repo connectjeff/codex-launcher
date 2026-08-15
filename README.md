@@ -90,20 +90,22 @@ All wrappers delegate to `/opt/homebrew/bin/gh`.
 
 ## Local LM Studio Performance
 
+### macOS: Mac Studio M1 Ultra
+
 This configuration has been tested on the following system:
 
 **Hardware**: Mac Studio M1 Ultra (128GB unified memory)
 **Model**: Qwen3-Coder-Next
 **Quantization**: MLX format on macOS (quantization controlled by system)
 
-### Performance Benchmarks (Observed on 2026-08-02)
+#### Performance Benchmarks (Observed on 2026-08-02)
 
 | Metric | Observed Range | Average |
 |--------|----------------|---------|
 | Avg Response Time | 3.10s-4.22s | 3.46s |
 | Tokens/Second | 34.12-44.84 | 43.41 |
 
-### Notes
+#### Notes
 
 These results were measured locally against LM Studio on this Mac Studio M1 Ultra using `qwen/qwen3-coder-next` and a 100-word essay prompt. Possible factors that can shift the numbers:
 
@@ -111,7 +113,7 @@ These results were measured locally against LM Studio on this Mac Studio M1 Ultr
 - **GPU offload**: Enabled in LM Studio
 - **Background processes**: System load during model inference
 
-### Testing Command
+#### Testing Command
 
 Run this to reproduce the benchmark:
 ```bash
@@ -121,6 +123,38 @@ url = 'http://127.0.0.1:1234/v1/chat/completions'
 payload = {'model': 'qwen/qwen3-coder-next', 'messages': [{'role':'user','content':'Write a 100-word essay about machine learning'}], 'max_tokens': 256}
 start = time.time(); r = requests.post(url, json=payload); data = r.json(); print(f\"{(time.time()-start):.2f}s, {data['usage']['completion_tokens']/(time.time()-start):.2f} tokens/s\")
 "
+```
+
+### Windows 11: Intel NUC 12 with RTX 4070 SUPER
+
+- **Hardware**: Intel NUC 12, NVIDIA GeForce RTX 4070 SUPER, 64GB system memory
+- **Model**: Qwen3-Coder-Next
+- **Quantization**: GGUF Q4_K_M
+- **LM Studio runtime**: CUDA 12 `llama.cpp`, 8 model layers offloaded to the GPU, 32,768-token loaded context
+
+#### Performance Benchmarks (Observed on 2026-08-15)
+
+| Metric | Observed Range | Average |
+|--------|----------------|---------|
+| Response Time | 12.66s-14.74s | 13.58s |
+| Tokens/Second | 11.33-13.01 | 11.97 |
+
+These results are from five measured requests after one warm-up request. LM Link was disabled, and the benchmark used the Windows-local `Qwen3-Coder-Next-Q4_K_M.gguf` model through `http://127.0.0.1:1234/v1/chat/completions`. Each request used the same 100-word machine-learning essay prompt and 256-token limit as the Mac Studio benchmark. The five measured responses generated 811 completion tokens in total.
+
+#### Testing Command
+
+```powershell
+$url = 'http://127.0.0.1:1234/v1/chat/completions'
+$payload = @{
+    model = 'qwen/qwen3-coder-next'
+    messages = @(@{ role = 'user'; content = 'Write a 100-word essay about machine learning' })
+    max_tokens = 256
+} | ConvertTo-Json -Depth 5
+
+$start = Get-Date
+$response = Invoke-RestMethod -Method Post -Uri $url -ContentType 'application/json' -Body $payload
+$elapsed = ((Get-Date) - $start).TotalSeconds
+"{0:N2}s, {1:N2} tokens/s" -f $elapsed, ($response.usage.completion_tokens / $elapsed)
 ```
 
 ## Changelog
