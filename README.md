@@ -1,149 +1,102 @@
 # Codex Launcher
 
-This repository contains native launchers for Codex on macOS and Windows 11.
+Codex Launcher is a desktop launcher for macOS and Windows 11 that starts Codex with either the standard Codex configuration or an isolated LM Studio configuration. The LM Studio workflow discovers available chat models, validates the selected model, updates the profile, and then starts Codex.
 
-| Version | Entry point | Desktop integration | Profile manager |
-|---|---|---|---|
-| macOS | `Codex Launcher.app` | Dock/Finder application | `scripts/config-manager.sh` |
-| Windows 11 | `windows/codex-launcher.cmd` | Start menu/taskbar shortcut | `scripts/config-manager.cmd` |
+## Features
 
-## Windows 11
-
-Run `windows\codex-launcher.cmd` or right-click `windows\Codex-Launcher.ps1` and choose **Run with PowerShell**. The launcher offers the normal Codex profile and an isolated LM Studio profile under `%USERPROFILE%\codex-config\codex-home-lmstudio`.
-
-To install an always-current Start menu shortcut backed by a symbolic link to this repository, run `windows\Install-CodexLauncher.ps1 -PinToTaskbar`. Windows 11 may require you to right-click the resulting Start menu entry and select **Pin to taskbar** if its protected taskbar API declines automatic pinning.
-
-The Windows icon is generated from the macOS iconset by `windows\Build-WindowsIcon.ps1`, so both launchers use the same artwork.
-
-The default LM Studio endpoint is `http://127.0.0.1:1234/v1`. This works with LM Studio running on Windows and with remote models exposed locally through LM Link. For a direct connection to another computer, override it without editing the script by setting `LMSTUDIO_BASE_URL`, or pass `-Endpoint` to the PowerShell entry point. The remote LM Studio server must listen on the LAN and permit inbound TCP port 1234.
-
-The Windows launcher queries `/v1/models`, excludes embedding and reranking models, prompts for a model, verifies a chat completion, writes the isolated Codex `config.toml`, removes common cloud API-token variables for the child process, and launches Codex. It does not alter the normal `%USERPROFILE%\.codex` profile.
-
-If Codex/ChatGPT is already running, the Windows launcher asks permission to restart it so the selected `CODEX_HOME` takes effect. Launch failures are written to `%USERPROFILE%\codex-config\codex-launcher.log` and remain visible in the launcher console.
-
-Windows configuration management is available through `scripts\config-manager.cmd` with `list`, `create`, `switch`, `export`, `import`, `show`, and `edit` commands.
-
-## macOS
-
-The existing macOS launcher remains unchanged:
-
-- `Codex Launcher.app` prompts for a runtime configuration.
-- `Codex Launcher.app/Contents/Resources/CodexLauncher.icns` provides the Dock/Finder icon.
-- `Default Codex config` launches Codex with `CODEX_HOME=$HOME/.codex`.
-- `Local LM Studio only` launches the ChatGPT/Codex desktop app with `CODEX_HOME=$HOME/codex-config/codex-home-lmstudio`.
-
-The LM Studio mode uses a custom OpenAI-compatible provider named `lmstudio-local` pointed at `http://127.0.0.1:1234/v1`. It does not use Codex's `--oss` mode, so it will not try to download `openai/gpt-oss-*` models. It does not copy `~/.codex/auth.json` or your normal Codex state. It also unsets common OpenAI/Codex API-token environment variables before starting Codex and refuses to launch unless LM Studio is reachable.
-
-When you select "Local LM Studio only", the launcher will:
-1. Query LM Studio for available chat models (embedding models are excluded)
-2. Present a model picker dialog so you can choose which model to use
-3. Verify the selected model responds correctly before launching
-4. Update `codex-home-lmstudio/config.toml` with your selection
-
-To use it from the Dock, drag `Codex Launcher.app` to the Dock.
-
-If your LM Studio server uses a different port, edit `LMSTUDIO_URL` in `Codex Launcher.app/Contents/MacOS/codex-launcher`, and update `model_providers.lmstudio-local.base_url` in `codex-home-lmstudio/config.toml`.
-
-The icon source is `assets/codex-launcher-icon.svg`.
+- Native launchers for macOS and Windows 11
+- Standard Codex and isolated LM Studio profiles
+- Automatic model discovery through the LM Studio OpenAI-compatible API
+- Filtering of embedding and reranking models from the chat-model picker
+- Completion test before Codex starts
+- Just-in-time model loading through LM Studio
+- Support for Windows-local models, remote LAN servers, and LM Link
+- Profile creation, switching, import, and export tools
+- Shared launcher artwork across both platforms
+- Persistent logging and visible launch errors
 
 ## Installation
 
-1. Drag `Codex Launcher.app` to your Applications folder (optional)
-2. Copy the launcher app to your Dock for easy access
-3. First launch: Select "Local LM Studio only" to configure for LM Studio
-4. Ensure LM Studio is running with the local server enabled on port 1234
+### Requirements
 
-## Configuration Manager
+- The Codex desktop app
+- LM Studio when using the LM Studio profile
+- An LM Studio chat model available through `/v1/models`
+- macOS 12 or later, or Windows 11 with PowerShell 5.1 or later
 
-A command-line tool is available for managing configurations and profiles:
+Download the appropriate archive from the [latest GitHub release](https://github.com/connectjeff/codex-launcher/releases/latest).
 
-```bash
-# List all saved profiles
-./scripts/config-manager.sh list
+### macOS
 
-# Create a new profile from current config
-./scripts/config-manager.sh create my-profile
+1. Download and extract `Codex-Launcher-macos-<version>.zip`.
+2. Move `Codex Launcher.app` into `/Applications`.
+3. Drag the application from Applications to the Dock.
+4. Start LM Studio and enable its local server if you plan to use the LM Studio profile.
+5. Open Codex Launcher and select either **Default Codex config** or **Local LM Studio only**.
 
-# Switch between profiles
-./scripts/config-manager.sh switch my-profile
+If macOS blocks the first launch because the app is unsigned, Control-click the application, choose **Open**, and confirm the prompt.
 
-# Export current configuration
-./scripts/config-manager.sh export ~/Desktop/codex-backup.tar.gz
+### Windows 11
 
-# Import configuration from backup
-./scripts/config-manager.sh import ~/Desktop/codex-backup.tar.gz
+1. Download and extract `Codex-Launcher-windows-<version>.zip` into a permanent folder.
+2. Open PowerShell in the extracted folder.
+3. Run:
 
-# Show current configuration
-./scripts/config-manager.sh show
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\Install-CodexLauncher.ps1 -PinToTaskbar
+   ```
 
-# Edit configuration in your editor
-./scripts/config-manager.sh edit
+4. Open **Codex Launcher** from the Start menu.
+5. If Windows does not pin it automatically, right-click the Start menu entry and select **Pin to taskbar**.
+6. Start LM Studio before selecting **Local LM Studio only**.
+
+The Windows installer creates a directory junction from `%LOCALAPPDATA%\Programs\Codex Launcher` to the extracted folder. Keep that folder in place after installation so the shortcut remains valid. Running the installer again updates the junction and shortcut.
+
+### LM Studio endpoint
+
+The default endpoint is:
+
+```text
+http://127.0.0.1:1234/v1
 ```
 
-## GitHub CLI
+This endpoint works with models hosted directly on the same computer and models exposed through LM Link. For a direct LAN connection, the remote LM Studio server must listen on the network and allow inbound TCP port 1234.
 
-Codex sessions launched from either the default config or the LM Studio config get `gh` on `PATH` through stable wrappers:
+On Windows, override the endpoint with the `LMSTUDIO_BASE_URL` environment variable or the PowerShell launcher's `-Endpoint` parameter. On macOS, update `LMSTUDIO_URL` in the launcher script and the provider `base_url` in the LM Studio profile.
 
-- `$HOME/.codex/bin/gh`
-- `codex-home-lmstudio/bin/gh`
-- `bin/gh`
+## Benchmarks
 
-All wrappers delegate to `/opt/homebrew/bin/gh`.
+Both benchmarks used `qwen/qwen3-coder-next`, the prompt `Write a 100-word essay about machine learning`, and a 256-token output limit through LM Studio's `/v1/chat/completions` endpoint.
 
-## Local LM Studio Performance
+| Platform | Model format | Response time | Average response time | Throughput | Average throughput |
+|---|---|---:|---:|---:|---:|
+| Mac Studio M1 Ultra, 128GB | MLX | 3.10–4.22s | 3.46s | 34.12–44.84 tokens/s | 43.41 tokens/s |
+| Intel NUC 12, RTX 4070 SUPER, 64GB | GGUF Q4_K_M | 12.66–14.74s | 13.58s | 11.33–13.01 tokens/s | 11.97 tokens/s |
 
-### macOS: Mac Studio M1 Ultra
+### Mac Studio
 
-This configuration has been tested on the following system:
+The Mac Studio measurements were recorded on 2026-08-02 with GPU offload enabled. MLX quantization was controlled by LM Studio and the macOS runtime.
 
-**Hardware**: Mac Studio M1 Ultra (128GB unified memory)
-**Model**: Qwen3-Coder-Next
-**Quantization**: MLX format on macOS (quantization controlled by system)
+### Windows 11
 
-#### Performance Benchmarks (Observed on 2026-08-02)
+The Windows measurements were recorded on 2026-08-15 from five measured requests after one warm-up request. LM Link was disabled to ensure the model ran on the NUC. LM Studio used its CUDA 12 `llama.cpp` backend, GGUF Q4_K_M quantization, eight GPU-offloaded layers, and a 32,768-token loaded context. The five measured responses generated 811 completion tokens.
 
-| Metric | Observed Range | Average |
-|--------|----------------|---------|
-| Avg Response Time | 3.10s-4.22s | 3.46s |
-| Tokens/Second | 34.12-44.84 | 43.41 |
+### Reproduce the benchmark
 
-#### Notes
+macOS:
 
-These results were measured locally against LM Studio on this Mac Studio M1 Ultra using `qwen/qwen3-coder-next` and a 100-word essay prompt. Possible factors that can shift the numbers:
-
-- **Quantization**: MLX format on macOS (quantization controlled by system)
-- **GPU offload**: Enabled in LM Studio
-- **Background processes**: System load during model inference
-
-#### Testing Command
-
-Run this to reproduce the benchmark:
 ```bash
 python3 -c "
 import requests, time
 url = 'http://127.0.0.1:1234/v1/chat/completions'
 payload = {'model': 'qwen/qwen3-coder-next', 'messages': [{'role':'user','content':'Write a 100-word essay about machine learning'}], 'max_tokens': 256}
-start = time.time(); r = requests.post(url, json=payload); data = r.json(); print(f\"{(time.time()-start):.2f}s, {data['usage']['completion_tokens']/(time.time()-start):.2f} tokens/s\")
+start = time.time(); response = requests.post(url, json=payload); data = response.json()
+elapsed = time.time() - start
+print(f'{elapsed:.2f}s, {data[\"usage\"][\"completion_tokens\"] / elapsed:.2f} tokens/s')
 "
 ```
 
-### Windows 11: Intel NUC 12 with RTX 4070 SUPER
-
-- **Hardware**: Intel NUC 12, NVIDIA GeForce RTX 4070 SUPER, 64GB system memory
-- **Model**: Qwen3-Coder-Next
-- **Quantization**: GGUF Q4_K_M
-- **LM Studio runtime**: CUDA 12 `llama.cpp`, 8 model layers offloaded to the GPU, 32,768-token loaded context
-
-#### Performance Benchmarks (Observed on 2026-08-15)
-
-| Metric | Observed Range | Average |
-|--------|----------------|---------|
-| Response Time | 12.66s-14.74s | 13.58s |
-| Tokens/Second | 11.33-13.01 | 11.97 |
-
-These results are from five measured requests after one warm-up request. LM Link was disabled, and the benchmark used the Windows-local `Qwen3-Coder-Next-Q4_K_M.gguf` model through `http://127.0.0.1:1234/v1/chat/completions`. Each request used the same 100-word machine-learning essay prompt and 256-token limit as the Mac Studio benchmark. The five measured responses generated 811 completion tokens in total.
-
-#### Testing Command
+Windows:
 
 ```powershell
 $url = 'http://127.0.0.1:1234/v1/chat/completions'
@@ -159,32 +112,83 @@ $elapsed = ((Get-Date) - $start).TotalSeconds
 "{0:N2}s, {1:N2} tokens/s" -f $elapsed, ($response.usage.completion_tokens / $elapsed)
 ```
 
-## Changelog
+Results vary with model quantization, GPU offload, context size, background load, and whether LM Link routes the request to another device.
 
-### v1.1.0 (Current)
+## Technical details
 
-- Added a native Windows 11 launcher with PowerShell and CMD entry points
-- Added Windows profile management and linked Start menu/taskbar installation
-- Added a Windows icon generated from the macOS launcher artwork
-- Added localhost LM Studio and LM Link model discovery and validation
-- Added Windows-local LM Studio performance benchmarks
-- Fixed Windows Codex AppX launching, profile restart handling, and visible error logging
-- Added macOS and Windows release archives
+### Platform components
 
-### v1.0.0
+| Platform | Launcher | Desktop integration | Profile manager |
+|---|---|---|---|
+| macOS | `Codex Launcher.app` | Dock/Finder application | `scripts/config-manager.sh` |
+| Windows 11 | `windows/Codex-Launcher.ps1` and `windows/codex-launcher.cmd` | Start menu/taskbar shortcut | `scripts/config-manager.ps1` and `scripts/config-manager.cmd` |
 
-- Added retry logic for LM Studio connection failures
-- Improved error messages with alert dialogs
-- Added logging levels (debug, info, warn, error)
-- Enhanced model picker with default model selection
-- Added version tracking in app bundle
-- Configuration manager for profiles and export/import
-- Disk space warnings before launching
-- Better error handling throughout
+### Profile isolation
 
-## TODO
+The standard profile uses the normal Codex home directory:
 
-See [`TODO.md`](./TODO.md) for planned features and improvements.
+- macOS: `~/.codex`
+- Windows: `%USERPROFILE%\.codex`
+
+The LM Studio profile uses a separate Codex home:
+
+- macOS: `~/codex-config/codex-home-lmstudio`
+- Windows: `%USERPROFILE%\codex-config\codex-home-lmstudio`
+
+The isolated profile does not copy the normal Codex authentication state. Before starting the LM Studio session, the launcher removes common OpenAI and Codex API-token environment variables from the child process.
+
+The generated provider configuration uses an OpenAI-compatible provider:
+
+```toml
+model = "qwen/qwen3-coder-next"
+model_provider = "lmstudio-local"
+
+[model_providers.lmstudio-local]
+name = "LM Studio"
+base_url = "http://127.0.0.1:1234/v1"
+wire_api = "chat"
+requires_openai_auth = false
+```
+
+### Launch sequence
+
+When the LM Studio profile is selected, the launcher:
+
+1. Queries `/v1/models`.
+2. Removes embedding and reranking models from the picker.
+3. Prompts for a chat model.
+4. Sends a minimal request to `/v1/chat/completions`.
+5. Writes the model and provider to the isolated `config.toml`.
+6. Starts Codex with the isolated `CODEX_HOME`.
+
+On Windows, the launcher resolves the installed `OpenAI.Codex` AppX package and starts its registered `ChatGPT.exe`. If Codex is already running, the launcher asks permission to restart it so the selected environment takes effect. Logs are written to `%USERPROFILE%\codex-config\codex-launcher.log`.
+
+On macOS, the application bundle launches the Codex executable embedded in the installed desktop app and uses native AppleScript dialogs for profile and model selection.
+
+### Profile management
+
+The profile managers support:
+
+```text
+list
+create <name>
+switch <name>
+export [file]
+import <file>
+show
+edit
+```
+
+Use `scripts/config-manager.sh` on macOS or `scripts\config-manager.cmd` on Windows.
+
+### Repository layout
+
+```text
+Codex Launcher.app/        macOS application bundle
+windows/                   Windows launcher, installer, icon, and example configuration
+scripts/                   macOS and Windows profile managers
+assets/                    Shared source artwork
+```
 
 ## License
 

@@ -75,11 +75,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          gh release create "${VERSION}" \
-            --repo "${RELEASE_REPO}" \
-            --title "Codex Launcher ${VERSION}" \
-            --notes-file dist-release/README-Release.md \
-            dist-release/*.zip
+          if gh release view "${VERSION}" --repo "${RELEASE_REPO}" >/dev/null 2>&1; then
+            gh release upload "${VERSION}" \
+              --repo "${RELEASE_REPO}" \
+              --clobber \
+              dist-release/*.zip
+          else
+            gh release create "${VERSION}" \
+              --repo "${RELEASE_REPO}" \
+              --title "Codex Launcher ${VERSION}" \
+              --notes-file dist-release/README-Release.md \
+              dist-release/*.zip
+          fi
 
       - name: Cleanup
         run: |
