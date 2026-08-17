@@ -40,20 +40,20 @@ jobs:
           
           # Create release notes
           cat > README-Release.md << 'EOF'
-# Codex Launcher Release
+          # Codex Launcher Release
 
-## Installation
+          ## Installation
 
-1. Copy \`Codex Launcher.app\` to your Applications folder
-2. Drag to Dock for easy access
+          1. Copy \`Codex Launcher.app\` to your Applications folder
+          2. Drag to Dock for easy access
 
-## Features
+          ## Features
 
-- Native launchers for macOS and Windows 11
-- Quick-launch Codex with default or isolated LM Studio configurations
-- Automatic LM Studio model discovery, validation, and configuration
-- Windows Start menu/taskbar installation with shared launcher artwork
-EOF
+          - Native launchers for macOS and Windows 11
+          - Quick-launch Codex with default or isolated LM Studio configurations
+          - Automatic LM Studio model discovery, validation, and configuration
+          - Windows Start menu/taskbar installation with shared launcher artwork
+          EOF
 
           # Create the macOS archive
           zip -r "${ZIP_NAME}" "Codex Launcher.app" README-Release.md
