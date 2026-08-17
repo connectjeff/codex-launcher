@@ -19,6 +19,8 @@ The default LM Studio endpoint is `http://127.0.0.1:1234/v1`. This works with LM
 
 The Windows launcher queries `/v1/models`, excludes embedding and reranking models, prompts for a model, verifies a chat completion, writes the isolated Codex `config.toml`, removes common cloud API-token variables for the child process, and launches Codex. It does not alter the normal `%USERPROFILE%\.codex` profile.
 
+If Codex/ChatGPT is already running, the Windows launcher asks permission to restart it so the selected `CODEX_HOME` takes effect. Launch failures are written to `%USERPROFILE%\codex-config\codex-launcher.log` and remain visible in the launcher console.
+
 Windows configuration management is available through `scripts\config-manager.cmd` with `list`, `create`, `switch`, `export`, `import`, `show`, and `edit` commands.
 
 ## macOS
@@ -159,7 +161,18 @@ $elapsed = ((Get-Date) - $start).TotalSeconds
 
 ## Changelog
 
-### v1.0.0 (Current)
+### v1.1.0 (Current)
+
+- Added a native Windows 11 launcher with PowerShell and CMD entry points
+- Added Windows profile management and linked Start menu/taskbar installation
+- Added a Windows icon generated from the macOS launcher artwork
+- Added localhost LM Studio and LM Link model discovery and validation
+- Added Windows-local LM Studio performance benchmarks
+- Fixed Windows Codex AppX launching, profile restart handling, and visible error logging
+- Added macOS and Windows release archives
+
+### v1.0.0
+
 - Added retry logic for LM Studio connection failures
 - Improved error messages with alert dialogs
 - Added logging levels (debug, info, warn, error)

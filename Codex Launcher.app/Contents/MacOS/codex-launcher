@@ -8,7 +8,7 @@ START_DIR="${HOME}/codex-config"
 LMSTUDIO_URL="http://127.0.0.1:1234/v1/models"
 DEFAULT_MODEL="qwen/qwen3-coder-next"
 LOG_FILE="${HOME}/codex-config/codex-launcher.log"
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Configuration file for storing preferences
 PREF_FILE="${LOCAL_CODEX_HOME}/launcher-preferences.toml"

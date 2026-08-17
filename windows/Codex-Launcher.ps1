@@ -20,6 +20,52 @@ function Write-LauncherLog([string]$Message) {
     Add-Content -LiteralPath $logFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message"
 }
 
+trap {
+    $message = $_.Exception.Message
+    Write-LauncherLog "ERROR: $message"
+    Write-Host "`nCodex Launcher failed: $message" -ForegroundColor Red
+    if (-not $NonInteractive) { [void](Read-Host 'Press Enter to close') }
+    exit 1
+}
+
+function Resolve-CodexAppExecutable {
+    $package = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue |
+        Sort-Object Version -Descending |
+        Select-Object -First 1
+    if (-not $package) { throw 'The Codex Windows app package is not installed.' }
+
+    $executable = Join-Path $package.InstallLocation 'app\ChatGPT.exe'
+    if (-not (Test-Path -LiteralPath $executable)) {
+        throw "The Codex app executable was not found at: $executable"
+    }
+    return $executable
+}
+
+function Restart-CodexAppIfNeeded {
+    $running = @(Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue)
+    if (-not $running.Count) { return }
+
+    if ($NonInteractive) {
+        throw 'Codex/ChatGPT is already running. Close it before using non-interactive launch mode.'
+    }
+
+    $answer = Read-Host 'Codex/ChatGPT is already running and must restart to apply this profile. Restart it now? [Y/n]'
+    if ($answer -match '^(n|no)$') {
+        Write-LauncherLog 'Launch cancelled because Codex/ChatGPT was already running'
+        throw 'Launch cancelled; the existing Codex/ChatGPT instance was left running.'
+    }
+
+    Write-LauncherLog "Stopping $($running.Count) existing Codex/ChatGPT process(es)"
+    $running | Stop-Process -Force
+    $deadline = (Get-Date).AddSeconds(15)
+    do {
+        Start-Sleep -Milliseconds 250
+        $remaining = @(Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue)
+    } while ($remaining.Count -and (Get-Date) -lt $deadline)
+
+    if ($remaining.Count) { throw 'Codex/ChatGPT did not stop within 15 seconds.' }
+}
+
 function Select-FromList([string]$Title, [string[]]$Choices) {
     if ($NonInteractive) { return $Choices[0] }
     Write-Host "`n$Title"
@@ -56,7 +102,7 @@ model = "$escapedModel"
 model_provider = "lmstudio-local"
 
 [model_providers.lmstudio-local]
-name = "LM Studio on Mac Studio"
+name = "LM Studio"
 base_url = "$escapedEndpoint"
 wire_api = "chat"
 requires_openai_auth = false
@@ -87,8 +133,8 @@ if ($Profile -eq 'LMStudio') {
 
 if ($NoLaunch) { return }
 New-Item -ItemType Directory -Path $StartDirectory -Force | Out-Null
-$codex = Get-Command codex -ErrorAction SilentlyContinue
-if (-not $codex) { throw 'Codex was not found. Install the Codex Windows app or add codex.exe to PATH.' }
+$codexApp = Resolve-CodexAppExecutable
+Restart-CodexAppIfNeeded
 
 $oldCodexHome = $env:CODEX_HOME
 try {
@@ -96,8 +142,12 @@ try {
     if ($Profile -eq 'LMStudio') {
         Remove-Item Env:OPENAI_API_KEY,Env:CHATGPT_API_KEY,Env:CODEX_AUTH_TOKEN,Env:CODEX_API_KEY -ErrorAction SilentlyContinue
     }
-    Write-LauncherLog "Launching Codex with CODEX_HOME=$selectedCodexHome"
-    Start-Process -FilePath $codex.Source -ArgumentList @('app', $StartDirectory) -WorkingDirectory $StartDirectory
+    Write-LauncherLog "Launching Codex app with CODEX_HOME=$selectedCodexHome executable=$codexApp"
+    $started = Start-Process -FilePath $codexApp -WorkingDirectory $StartDirectory -PassThru
+    Start-Sleep -Seconds 3
+    $appProcesses = @(Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue)
+    if (-not $appProcesses.Count) { throw 'The Codex app process did not remain running after launch.' }
+    Write-LauncherLog "Codex app started successfully; initial PID=$($started.Id)"
 } finally {
     $env:CODEX_HOME = $oldCodexHome
 }

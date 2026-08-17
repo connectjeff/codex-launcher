@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v1.0.*'
+      - 'v*.*.*'
 
 jobs:
   build-and-release:
@@ -49,13 +49,23 @@ jobs:
 
 ## Features
 
-- Quick-launch Codex with different configurations
-- LM Studio integration support
-- Automatic model configuration
+- Native launchers for macOS and Windows 11
+- Quick-launch Codex with default or isolated LM Studio configurations
+- Automatic LM Studio model discovery, validation, and configuration
+- Windows Start menu/taskbar installation with shared launcher artwork
 EOF
 
-          # Create the ZIP archive
+          # Create the macOS archive
           zip -r "${ZIP_NAME}" "Codex Launcher.app" README-Release.md
+
+          # Create the Windows archive
+          cd ..
+          zip -r "dist-release/Codex-Launcher-windows-${VERSION}.zip" \
+            windows \
+            scripts/config-manager.ps1 \
+            scripts/config-manager.cmd \
+            README.md \
+            LICENSE
 
       - name: Create GitHub Release
         env:
